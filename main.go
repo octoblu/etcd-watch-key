@@ -4,13 +4,11 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/signal"
-	"syscall"
-	"time"
 
 	"github.com/codegangsta/cli"
 	"github.com/coreos/go-semver/semver"
 	"github.com/fatih/color"
+	"github.com/octoblu/go-simple-etcd-client/etcdclient"
 	De "github.com/tj/go-debug"
 )
 
@@ -21,54 +19,51 @@ func main() {
 	app.Name = "etcd-watch-key"
 	app.Version = version()
 	app.Action = run
+	app.ArgsUsage = "<key>"
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
-			Name:   "example, e",
-			EnvVar: "ETCD_WATCH_KEY_EXAMPLE",
-			Usage:  "Example string flag",
+			Name:   "etcd-uri, e",
+			EnvVar: "ETCD_WATCH_KEY_ETCD_URI",
+			Usage:  "Etcd uri to watch",
 		},
 	}
 	app.Run(os.Args)
 }
 
 func run(context *cli.Context) {
-	example := getOpts(context)
+	etcdURI, watchKey := getOpts(context)
 
-	sigTerm := make(chan os.Signal)
-	signal.Notify(sigTerm, syscall.SIGTERM)
+	client, err := etcdclient.Dial(etcdURI)
+	if err != nil {
+		log.Fatalln("Error on etcdclient.Dial", err.Error())
+	}
 
-	sigTermReceived := false
-
-	go func() {
-		<-sigTerm
-		fmt.Println("SIGTERM received, waiting to exit")
-		sigTermReceived = true
-	}()
-
-	for {
-		if sigTermReceived {
-			fmt.Println("I'll be back.")
-			os.Exit(0)
-		}
-
-		debug("etcd-watch-key.loop: %v", example)
-		time.Sleep(1 * time.Second)
+	err = client.WatchRecursive(watchKey, func(key, value string) {
+		fmt.Printf("key: %v, value: %v\n", key, value)
+		os.Exit(0)
+	})
+	if err != nil {
+		log.Fatalln("Error on client.WatchRecursive", err.Error())
 	}
 }
 
-func getOpts(context *cli.Context) string {
-	example := context.String("example")
+func getOpts(context *cli.Context) (string, string) {
+	etcdURI := context.String("etcd-uri")
+	key := context.Args().First()
 
-	if example == "" {
+	if etcdURI == "" || key == "" {
 		cli.ShowAppHelp(context)
 
-		if example == "" {
-			color.Red("  Missing required flag --example or ETCD_WATCH_KEY_EXAMPLE")
+		if etcdURI == "" {
+			color.Red("  Missing required flag --etcd-uri or ETCD_WATCH_KEY_ETCD_URI")
+		}
+		if key == "" {
+			color.Red("  Missing required argument <key>")
 		}
 		os.Exit(1)
 	}
 
-	return example
+	return etcdURI, key
 }
 
 func version() string {
