@@ -26,12 +26,17 @@ func main() {
 			EnvVar: "ETCD_WATCH_KEY_ETCD_URI",
 			Usage:  "Etcd uri to watch",
 		},
+		cli.BoolFlag{
+			Name:   "forever, f",
+			EnvVar: "ETCD_WATCH_KEY_FOREVER",
+			Usage:  "Watch forever, instead of exiting on first event",
+		},
 	}
 	app.Run(os.Args)
 }
 
 func run(context *cli.Context) {
-	etcdURI, watchKey := getOpts(context)
+	etcdURI, forever, watchKey := getOpts(context)
 
 	client, err := etcdclient.Dial(etcdURI)
 	if err != nil {
@@ -40,15 +45,19 @@ func run(context *cli.Context) {
 
 	err = client.WatchRecursive(watchKey, func(key, value string) {
 		fmt.Printf("key: %v, value: %v\n", key, value)
-		os.Exit(0)
+
+		if !forever {
+			os.Exit(0)
+		}
 	})
 	if err != nil {
 		log.Fatalln("Error on client.WatchRecursive", err.Error())
 	}
 }
 
-func getOpts(context *cli.Context) (string, string) {
+func getOpts(context *cli.Context) (string, bool, string) {
 	etcdURI := context.String("etcd-uri")
+	forever := context.Bool("forever")
 	key := context.Args().First()
 
 	if etcdURI == "" || key == "" {
@@ -63,7 +72,7 @@ func getOpts(context *cli.Context) (string, string) {
 		os.Exit(1)
 	}
 
-	return etcdURI, key
+	return etcdURI, forever, key
 }
 
 func version() string {
